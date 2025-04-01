@@ -152,6 +152,50 @@ const thinkTagProcessor: ThoughtProcessor = {
   }
 }
 
+// 新增 detailsSummaryProcessor 处理器来处理图片中的格式
+const detailsSummaryProcessor: ThoughtProcessor = {
+  canProcess: (content: string, message?: Message) => {
+    if (!message) return false
+    
+    return content.includes('<details') && 
+           content.includes('<summary>') && 
+           content.includes('</summary>') && 
+           content.includes('</details>')
+  },
+  process: (content: string) => {
+    // 匹配整个 details 标签块，包括其中的内容
+    const detailsPattern = /<details[^>]*>([\s\S]*?)<\/details>/
+    const detailsMatch = content.match(detailsPattern)
+    
+    if (detailsMatch) {
+      // 提取 details 内的全部内容
+      const detailsContent = detailsMatch[1].trim()
+      
+      // 从 details 内容中提取 summary 标签及其内容
+      const summaryPattern = /<summary>([\s\S]*?)<\/summary>([\s\S]*)/
+      const summaryMatch = detailsContent.match(summaryPattern)
+      
+      if (summaryMatch) {
+        // 提取 summary 后的内容作为推理内容
+        const reasoning = summaryMatch[2].trim()
+        
+        // 从原始内容中移除整个 details 部分
+        const processedContent = content.replace(detailsPattern, '').trim()
+        
+        return {
+          reasoning: reasoning,
+          content: processedContent
+        }
+      }
+    }
+    
+    return {
+      reasoning: '',
+      content
+    }
+  }
+}
+
 export function withMessageThought(message: Message) {
   if (message.role !== 'assistant') {
     return message
@@ -167,7 +211,8 @@ export function withMessageThought(message: Message) {
   }
 
   const content = message.content.trim()
-  const processors: ThoughtProcessor[] = [glmZeroPreviewProcessor, thinkTagProcessor]
+  // 添加 detailsSummaryProcessor 到处理器列表中
+  const processors: ThoughtProcessor[] = [detailsSummaryProcessor, glmZeroPreviewProcessor, thinkTagProcessor]
 
   const processor = processors.find((p) => p.canProcess(content, message))
   if (processor) {
