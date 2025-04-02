@@ -157,44 +157,69 @@ const detailsSummaryProcessor: ThoughtProcessor = {
   canProcess: (content: string, message?: Message) => {
     if (!message) return false
     
-    return content.includes('<details') && 
-           content.includes('<summary>') && 
-           content.includes('</summary>') && 
-           content.includes('</details>')
+    // 检查是否处于发送中状态
+    const isStreaming = message.status === 'sending' || message.status === 'pending';
+    
+    // 完整标签检查
+    const hasCompleteTag = content.includes('<details') && 
+                           content.includes('<summary>') && 
+                           content.includes('</summary>') && 
+                           content.includes('</details>');
+    
+    // 流式输出中的不完整标签检查
+    const hasIncompleteTag = isStreaming && 
+                            (content.includes('<details') && content.includes('<summary>'));
+    
+    return hasCompleteTag || hasIncompleteTag;
   },
   process: (content: string) => {
-    // 匹配整个 details 标签块，包括其中的内容
-    const detailsPattern = /<details[^>]*>([\s\S]*?)<\/details>/
-    const detailsMatch = content.match(detailsPattern)
+    // 匹配完整的 details 标签块
+    const detailsPattern = /<details[^>]*>([\s\S]*?)<\/details>/;
+    const detailsMatch = content.match(detailsPattern);
     
     if (detailsMatch) {
-      // 提取 details 内的全部内容
-      const detailsContent = detailsMatch[1].trim()
-      
-      // 从 details 内容中提取 summary 标签及其内容
-      const summaryPattern = /<summary>([\s\S]*?)<\/summary>([\s\S]*)/
-      const summaryMatch = detailsContent.match(summaryPattern)
+      // 处理完整标签的逻辑（保持不变）
+      const detailsContent = detailsMatch[1].trim();
+      const summaryPattern = /<summary>([\s\S]*?)<\/summary>([\s\S]*)/;
+      const summaryMatch = detailsContent.match(summaryPattern);
       
       if (summaryMatch) {
-        // 提取 summary 后的内容作为推理内容
-        const reasoning = summaryMatch[2].trim()
-        
-        // 从原始内容中移除整个 details 部分
-        const processedContent = content.replace(detailsPattern, '').trim()
+        const reasoning = summaryMatch[2].trim();
+        const processedContent = content.replace(detailsPattern, '').trim();
         
         return {
           reasoning: reasoning,
           content: processedContent
-        }
+        };
+      }
+    } else if (content.includes('<details') && content.includes('<summary>')) {
+      // 处理不完整标签的情况（流式输出）
+      const summaryStartIndex = content.indexOf('<summary>') + 9;
+      const summaryEndIndex = content.indexOf('</summary>');
+      
+      if (summaryEndIndex > summaryStartIndex) {
+        // 如果 summary 标签已闭合，提取 summary 后的内容
+        const reasoning = content.substring(summaryEndIndex + 10).trim();
+        return {
+          reasoning: reasoning,
+          content: '' // 在思考中时，内容为空
+        };
+      } else {
+        // 如果 summary 标签未闭合，提取 summary 后的内容
+        const reasoning = content.substring(summaryStartIndex).trim();
+        return {
+          reasoning: reasoning,
+          content: '' // 在思考中时，内容为空
+        };
       }
     }
     
     return {
       reasoning: '',
       content
-    }
+    };
   }
-}
+};
 
 export function withMessageThought(message: Message) {
   if (message.role !== 'assistant') {
